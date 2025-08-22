@@ -30,7 +30,8 @@ const (
 	COMMA  = ","
 
 	// Keywords
-	LET   = "LET"
-	CONST = "CONST"
-	FN    = "FN"
+	LET    = "LET"
+	CONST  = "CONST"
+	FN     = "FN"
+	RETURN = "RETURN"
 )

@@ -119,9 +119,10 @@ func newToken(tokenType token.TokenType, ch byte) token.Token {
 }
 
 var keywords = map[string]token.TokenType{
-	"fn":    token.FN,
-	"let":   token.LET,
-	"const": token.CONST,
+	"fn":     token.FN,
+	"let":    token.LET,
+	"const":  token.CONST,
+	"return": token.RETURN,
 }
 
 func lookupIdent(ident string) token.TokenType {

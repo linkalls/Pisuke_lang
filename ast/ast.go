@@ -85,6 +85,23 @@ func (cs *ConstStatement) String() string {
 	return out.String()
 }
 
+// ReturnStatement represents a 'return' statement, e.g., `return 5;`
+type ReturnStatement struct {
+	Token       token.Token // the 'return' token
+	ReturnValue Expression
+}
+
+func (rs *ReturnStatement) statementNode()       {}
+func (rs *ReturnStatement) TokenLiteral() string { return rs.Token.Literal }
+func (rs *ReturnStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString(rs.TokenLiteral() + " ")
+	if rs.ReturnValue != nil {
+		out.WriteString(rs.ReturnValue.String())
+	}
+	return out.String()
+}
+
 // Identifier represents an identifier (variable name).
 type Identifier struct {
 	Token token.Token // the token.IDENT token

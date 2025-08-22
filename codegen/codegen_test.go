@@ -28,6 +28,76 @@ func main() {
 	}
 }
 
+func TestGenerateServerRoute(t *testing.T) {
+	program := &ast.Program{
+		Statements: []ast.Statement{
+			&ast.ExpressionStatement{
+				Expression: &ast.CallExpression{
+					Function: &ast.MemberAccessExpression{
+						Object:   &ast.Identifier{Value: "server"},
+						Property: &ast.Identifier{Value: "route"},
+					},
+					Arguments: []ast.Expression{
+						&ast.StringLiteral{Value: "/"},
+						&ast.FunctionLiteral{
+							Parameters: []*ast.Identifier{},
+							Body: &ast.BlockStatement{
+								Statements: []ast.Statement{
+									&ast.ReturnStatement{
+										ReturnValue: &ast.StringLiteral{Value: "Hello Pisuke!"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	expected := `package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "Hello Pisuke!")
+	})
+}
+`
+	generatedCode := Generate(program)
+
+	if generatedCode != expected {
+		t.Errorf("Generated code is not correct.\nExpected:\n%s\nGot:\n%s", expected, generatedCode)
+	}
+}
+
+func TestGenerateReturnStatement(t *testing.T) {
+	program := &ast.Program{
+		Statements: []ast.Statement{
+			&ast.ReturnStatement{
+				ReturnValue: &ast.IntegerLiteral{Value: 5},
+			},
+		},
+	}
+
+	// This is not a valid Go program on its own, but we test the statement generation.
+	// We'd need to put it inside a function for it to be runnable.
+	expected := `package main
+
+func main() {
+	return 5
+}
+`
+	generatedCode := Generate(program)
+	if generatedCode != expected {
+		t.Errorf("Generated code is not correct.\nExpected:\n%s\nGot:\n%s", expected, generatedCode)
+	}
+}
+
 func TestGenerateConstStatement(t *testing.T) {
 	program := &ast.Program{
 		Statements: []ast.Statement{

@@ -11,8 +11,10 @@ type Generator struct {
 	out         *bytes.Buffer
 	indentlevel int
 
-	requiresHttp bool
-	requiresLog  bool
+	requiresHttp     bool
+	requiresLog      bool
+	requiresFmt      bool
+	isInRouteHandler bool
 }
 
 func NewGenerator() *Generator {
@@ -46,8 +48,11 @@ func Generate(program *ast.Program) string {
 	var finalBuf bytes.Buffer
 	finalBuf.WriteString("package main\n\n")
 
-	if g.requiresHttp || g.requiresLog {
+	if g.requiresHttp || g.requiresLog || g.requiresFmt {
 		finalBuf.WriteString("import (\n")
+		if g.requiresFmt {
+			finalBuf.WriteString("\t\"fmt\"\n")
+		}
 		if g.requiresLog {
 			finalBuf.WriteString("\t\"log\"\n")
 		}
@@ -78,6 +83,8 @@ func (g *Generator) genStatement(stmt ast.Statement) {
 		g.genLetStatement(node)
 	case *ast.ConstStatement:
 		g.genConstStatement(node)
+	case *ast.ReturnStatement:
+		g.genReturnStatement(node)
 	case *ast.ExpressionStatement:
 		g.genExpression(node.Expression)
 		g.write("\n")
@@ -99,6 +106,7 @@ func (g *Generator) genExpression(expr ast.Expression) {
 		g.genExpression(node.Right)
 		g.write(")")
 	case *ast.FunctionLiteral:
+		// This case is for general function literals, not route handlers
 		params := []string{}
 		for _, p := range node.Parameters {
 			params = append(params, p.Value)
@@ -129,9 +137,27 @@ func (g *Generator) genExpression(expr ast.Expression) {
 					g.genExpression(node.Arguments[0])
 					g.write(")))")
 					return
+				case "route":
+					g.requiresHttp = true
+					g.requiresFmt = true
+					path := node.Arguments[0].(*ast.StringLiteral).Value
+					handler := node.Arguments[1].(*ast.FunctionLiteral)
+
+					g.write(fmt.Sprintf("http.HandleFunc(\"%s\", func(w http.ResponseWriter, r *http.Request) {\n", path))
+					g.indentlevel++
+					g.isInRouteHandler = true
+					for _, s := range handler.Body.Statements {
+						g.genStatement(s)
+					}
+					g.isInRouteHandler = false
+					g.indentlevel--
+					g.indent()
+					g.write("})")
+					return
 				}
 			}
 		}
+		// Generic call
 		args := []string{}
 		originalOut := g.out
 		for _, a := range node.Arguments {
@@ -161,4 +187,16 @@ func (g *Generator) genConstStatement(constStmt *ast.ConstStatement) {
 	g.write(fmt.Sprintf("const %s = ", constStmt.Name.Value))
 	g.genExpression(constStmt.Value)
 	g.write("\n")
+}
+
+func (g *Generator) genReturnStatement(returnStmt *ast.ReturnStatement) {
+	if g.isInRouteHandler {
+		g.write("fmt.Fprint(w, ")
+		g.genExpression(returnStmt.ReturnValue)
+		g.write(")\n")
+	} else {
+		g.write("return ")
+		g.genExpression(returnStmt.ReturnValue)
+		g.write("\n")
+	}
 }

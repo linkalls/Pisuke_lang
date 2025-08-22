@@ -109,6 +109,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseLetStatement()
 	case token.CONST:
 		return p.parseConstStatement()
+	case token.RETURN:
+		return p.parseReturnStatement()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -128,6 +130,19 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 	p.nextToken()
 
 	stmt.Value = p.parseExpression(LOWEST)
+
+	if p.peekTokenIs(token.RBRACE) {
+		p.nextToken()
+	}
+
+	return stmt
+}
+
+func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
+	stmt := &ast.ReturnStatement{Token: p.curToken}
+	p.nextToken()
+
+	stmt.ReturnValue = p.parseExpression(LOWEST)
 
 	if p.peekTokenIs(token.RBRACE) {
 		p.nextToken()
