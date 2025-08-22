@@ -7,41 +7,150 @@ import (
 	"strings"
 )
 
-func Generate(program *ast.Program) string {
-	var out bytes.Buffer
+type Generator struct {
+	out         *bytes.Buffer
+	indentlevel int
 
-	// Go package and main function wrapper
-	out.WriteString("package main\n\n")
-	out.WriteString("func main() {\n")
-
-	for _, statement := range program.Statements {
-		s := genStatement(statement)
-		lines := strings.Split(s, "\n")
-		for _, line := range lines {
-			if line != "" {
-				out.WriteString("\t" + line + "\n")
-			}
-		}
-	}
-
-	out.WriteString("}\n")
-
-	return out.String()
+	requiresHttp bool
+	requiresLog  bool
 }
 
-func genStatement(stmt ast.Statement) string {
+func NewGenerator() *Generator {
+	return &Generator{out: &bytes.Buffer{}}
+}
+
+func (g *Generator) indent() {
+	g.out.WriteString(strings.Repeat("\t", g.indentlevel))
+}
+
+func (g *Generator) write(s string) {
+	// No indent, for writing parts of an expression on the same line
+	g.out.WriteString(s)
+}
+
+func (g *Generator) writeLine(s string) {
+	g.indent()
+	g.out.WriteString(s)
+	g.out.WriteString("\n")
+}
+
+func Generate(program *ast.Program) string {
+	g := NewGenerator()
+
+	// First pass to generate code and find out required imports
+	var codeBuf bytes.Buffer
+	g.out = &codeBuf
+	g.genProgram(program)
+
+	// Second pass to build the final output with imports
+	var finalBuf bytes.Buffer
+	finalBuf.WriteString("package main\n\n")
+
+	if g.requiresHttp || g.requiresLog {
+		finalBuf.WriteString("import (\n")
+		if g.requiresLog {
+			finalBuf.WriteString("\t\"log\"\n")
+		}
+		if g.requiresHttp {
+			finalBuf.WriteString("\t\"net/http\"\n")
+		}
+		finalBuf.WriteString(")\n\n")
+	}
+
+	finalBuf.Write(codeBuf.Bytes())
+	return finalBuf.String()
+}
+
+func (g *Generator) genProgram(program *ast.Program) {
+	g.writeLine("func main() {")
+	g.indentlevel++
+	for _, stmt := range program.Statements {
+		g.genStatement(stmt)
+	}
+	g.indentlevel--
+	g.writeLine("}")
+}
+
+func (g *Generator) genStatement(stmt ast.Statement) {
+	g.indent()
 	switch node := stmt.(type) {
 	case *ast.LetStatement:
-		return genLetStatement(node)
-	default:
-		return "" // Or some error handling
+		g.genLetStatement(node)
+	case *ast.ExpressionStatement:
+		g.genExpression(node.Expression)
+		g.write("\n")
 	}
 }
 
-func genLetStatement(letStmt *ast.LetStatement) string {
-	// Since we don't parse expressions yet, we'll use a zero value.
-	// This is a placeholder until expression parsing is implemented.
-	// For `let x = ...`, we generate `var x = 0; _ = x` to avoid "declared and not used" error.
-	varName := letStmt.Name.Value
-	return fmt.Sprintf("var %s = 0\n_ = %s", varName, varName)
+func (g *Generator) genExpression(expr ast.Expression) {
+	switch node := expr.(type) {
+	case *ast.IntegerLiteral:
+		g.write(fmt.Sprintf("%d", node.Value))
+	case *ast.StringLiteral:
+		g.write(fmt.Sprintf("\"%s\"", node.Value))
+	case *ast.Identifier:
+		g.write(node.Value)
+	case *ast.InfixExpression:
+		g.write("(")
+		g.genExpression(node.Left)
+		g.write(fmt.Sprintf(" %s ", node.Operator))
+		g.genExpression(node.Right)
+		g.write(")")
+	case *ast.FunctionLiteral:
+		params := []string{}
+		for _, p := range node.Parameters {
+			params = append(params, p.Value)
+		}
+		g.write(fmt.Sprintf("func(%s) {", strings.Join(params, ", ")))
+		g.write("\n")
+		g.indentlevel++
+		for _, s := range node.Body.Statements {
+			g.genStatement(s)
+		}
+		g.indentlevel--
+		g.indent()
+		g.write("}")
+	case *ast.CallExpression:
+		if mae, ok := node.Function.(*ast.MemberAccessExpression); ok {
+			if obj, ok := mae.Object.(*ast.Identifier); ok && obj.Value == "server" {
+				switch mae.Property.Value {
+				case "serve":
+					g.requiresHttp = true
+					g.requiresLog = true
+					g.write("log.Fatal(http.ListenAndServe(\":")
+					g.genExpression(node.Arguments[0])
+					g.write("\", nil))")
+					return
+				case "static":
+					g.requiresHttp = true
+					g.write("http.Handle(\"/\", http.FileServer(http.Dir(")
+					g.genExpression(node.Arguments[0])
+					g.write(")))")
+					return
+				}
+			}
+		}
+		args := []string{}
+		originalOut := g.out
+		for _, a := range node.Arguments {
+			var argBuf bytes.Buffer
+			g.out = &argBuf
+			g.genExpression(a)
+			args = append(args, argBuf.String())
+		}
+		g.out = originalOut
+
+		g.genExpression(node.Function)
+		g.write("(")
+		g.write(strings.Join(args, ", "))
+		g.write(")")
+	}
+}
+
+func (g *Generator) genLetStatement(letStmt *ast.LetStatement) {
+	g.write(fmt.Sprintf("var %s = ", letStmt.Name.Value))
+	g.genExpression(letStmt.Value)
+	g.write("\n")
+	g.indent()
+	g.write(fmt.Sprintf("_ = %s\n", letStmt.Name.Value))
 }

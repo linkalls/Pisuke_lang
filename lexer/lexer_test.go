@@ -6,8 +6,15 @@ import (
 )
 
 func TestNextToken(t *testing.T) {
-	input := `let five = 5;
-let ten = 10;
+	input := `let five = 5
+let ten = 10
+
+let add = fn(x, y) {
+  x + y
+}
+
+let result = add(five, ten)
+"hello world"
 `
 
 	tests := []struct {
@@ -18,12 +25,34 @@ let ten = 10;
 		{token.IDENT, "five"},
 		{token.ASSIGN, "="},
 		{token.INT, "5"},
-		{token.ILLEGAL, ";"},
 		{token.LET, "let"},
 		{token.IDENT, "ten"},
 		{token.ASSIGN, "="},
 		{token.INT, "10"},
-		{token.ILLEGAL, ";"},
+		{token.LET, "let"},
+		{token.IDENT, "add"},
+		{token.ASSIGN, "="},
+		{token.FN, "fn"},
+		{token.LPAREN, "("},
+		{token.IDENT, "x"},
+		{token.COMMA, ","},
+		{token.IDENT, "y"},
+		{token.RPAREN, ")"},
+		{token.LBRACE, "{"},
+		{token.IDENT, "x"},
+		{token.PLUS, "+"},
+		{token.IDENT, "y"},
+		{token.RBRACE, "}"},
+		{token.LET, "let"},
+		{token.IDENT, "result"},
+		{token.ASSIGN, "="},
+		{token.IDENT, "add"},
+		{token.LPAREN, "("},
+		{token.IDENT, "five"},
+		{token.COMMA, ","},
+		{token.IDENT, "ten"},
+		{token.RPAREN, ")"},
+		{token.STRING, "hello world"},
 		{token.EOF, ""},
 	}
 

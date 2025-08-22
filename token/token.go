@@ -18,9 +18,16 @@ const (
 
 	// Operators
 	ASSIGN = "="
+	PLUS   = "+"
+	MUL    = "*"
 
 	// Delimiters
-	SEMICOLON = ";"
+	LPAREN = "("
+	RPAREN = ")"
+	DOT    = "."
+	LBRACE = "{"
+	RBRACE = "}"
+	COMMA  = ","
 
 	// Keywords
 	LET   = "LET"
