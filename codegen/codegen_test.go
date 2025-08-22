@@ -28,6 +28,28 @@ func main() {
 	}
 }
 
+func TestGenerateConstStatement(t *testing.T) {
+	program := &ast.Program{
+		Statements: []ast.Statement{
+			&ast.ConstStatement{
+				Name:  &ast.Identifier{Value: "MY_CONST"},
+				Value: &ast.IntegerLiteral{Value: 123},
+			},
+		},
+	}
+
+	expected := `package main
+
+func main() {
+	const MY_CONST = 123
+}
+`
+	generatedCode := Generate(program)
+	if generatedCode != expected {
+		t.Errorf("Generated code is not correct.\nExpected:\n%s\nGot:\n%s", expected, generatedCode)
+	}
+}
+
 func TestGenerateServerStatic(t *testing.T) {
 	program := &ast.Program{
 		Statements: []ast.Statement{

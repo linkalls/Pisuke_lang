@@ -76,6 +76,8 @@ func (g *Generator) genStatement(stmt ast.Statement) {
 	switch node := stmt.(type) {
 	case *ast.LetStatement:
 		g.genLetStatement(node)
+	case *ast.ConstStatement:
+		g.genConstStatement(node)
 	case *ast.ExpressionStatement:
 		g.genExpression(node.Expression)
 		g.write("\n")
@@ -153,4 +155,10 @@ func (g *Generator) genLetStatement(letStmt *ast.LetStatement) {
 	g.write("\n")
 	g.indent()
 	g.write(fmt.Sprintf("_ = %s\n", letStmt.Name.Value))
+}
+
+func (g *Generator) genConstStatement(constStmt *ast.ConstStatement) {
+	g.write(fmt.Sprintf("const %s = ", constStmt.Name.Value))
+	g.genExpression(constStmt.Value)
+	g.write("\n")
 }

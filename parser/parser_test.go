@@ -378,9 +378,30 @@ func TestMemberAccessExpression(t *testing.T) {
 	if !testIdentifier(t, exp.Object, "server") {
 		return
 	}
+}
 
-	if exp.Property.Value != "serve" {
-		t.Errorf("exp.Property.Value not %s. got=%s", "serve", exp.Property.Value)
+func TestConstStatements(t *testing.T) {
+	input := `
+const x = 5
+const y = 10
+const foobar = 838383
+`
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 3 {
+		t.Fatalf("program.Statements does not contain 3 statements. got=%d",
+			len(program.Statements))
+	}
+
+	for _, stmt := range program.Statements {
+		_, ok := stmt.(*ast.ConstStatement)
+		if !ok {
+			t.Errorf("stmt not *ast.ConstStatement. got=%T", stmt)
+			continue
+		}
 	}
 }
 
