@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"pisuke/ast"
 	"pisuke/lexer"
 	"pisuke/token"
@@ -11,10 +12,15 @@ type Parser struct {
 
 	curToken  token.Token
 	peekToken token.Token
+
+	Errors []string
 }
 
 func New(l *lexer.Lexer) *Parser {
-	p := &Parser{l: l}
+	p := &Parser{
+		l:      l,
+		Errors: []string{},
+	}
 
 	// Read two tokens, so curToken and peekToken are both set
 	p.nextToken()
@@ -33,6 +39,13 @@ func (p *Parser) ParseProgram() *ast.Program {
 	program.Statements = []ast.Statement{}
 
 	for p.curToken.Type != token.EOF {
+		if p.curToken.Type == token.ILLEGAL {
+			msg := fmt.Sprintf("illegal token: %q", p.curToken.Literal)
+			p.Errors = append(p.Errors, msg)
+			p.nextToken()
+			continue
+		}
+
 		stmt := p.parseStatement()
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
@@ -65,10 +78,8 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 		return nil
 	}
 
-	// TODO: We're skipping the expressions until we encounter a semicolon
-	for !p.curTokenIs(token.SEMICOLON) {
-		p.nextToken()
-	}
+	// TODO: We're skipping the expressions for now
+	p.nextToken()
 
 	return stmt
 }
@@ -81,11 +92,18 @@ func (p *Parser) peekTokenIs(t token.TokenType) bool {
 	return p.peekToken.Type == t
 }
 
+func (p *Parser) peekError(t token.TokenType) {
+	msg := fmt.Sprintf("expected next token to be %s, got %s instead",
+		t, p.peekToken.Type)
+	p.Errors = append(p.Errors, msg)
+}
+
 func (p *Parser) expectPeek(t token.TokenType) bool {
 	if p.peekTokenIs(t) {
 		p.nextToken()
 		return true
 	} else {
+		p.peekError(t)
 		return false
 	}
 }

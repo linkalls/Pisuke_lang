@@ -18,12 +18,12 @@ let ten = 10;
 		{token.IDENT, "five"},
 		{token.ASSIGN, "="},
 		{token.INT, "5"},
-		{token.SEMICOLON, ";"},
+		{token.ILLEGAL, ";"},
 		{token.LET, "let"},
 		{token.IDENT, "ten"},
 		{token.ASSIGN, "="},
 		{token.INT, "10"},
-		{token.SEMICOLON, ";"},
+		{token.ILLEGAL, ";"},
 		{token.EOF, ""},
 	}
 
