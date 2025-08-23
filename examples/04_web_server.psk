@@ -1,0 +1,21 @@
+// Webサーバー機能の総合サンプル
+
+// `server` オブジェクトは標準ライブラリとして提供されます。
+// (現在はまだ `import` 構文がないため、グローバルに利用可能です)
+
+// 静的ファイル（例: public/index.html）を配信するための設定
+// server.static("./public") // This will require a public directory
+
+// ルートパス "/" へのリクエストを処理するハンドラを登録
+server.route("/", fn(req) {
+  return "Welcome to Pisuke Web!"
+})
+
+// クエリパラメータを受け取るルート
+server.route("/hello", fn(req) {
+  let name = req.query.name
+  return "Hello, " + name
+})
+
+// サーバーをポート8080で起動
+server.serve(8080)

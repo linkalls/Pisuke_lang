@@ -1,0 +1,15 @@
+// 関数のサンプル
+
+// 二つの数値を足す関数を定義します
+let add = fn(a, b) {
+  return a + b
+}
+
+// `let`で定義した関数は、他の変数と同じように扱えます。
+const five = 5
+let ten = 10
+
+let result = add(five, ten)
+
+// `print`関数を使って結果を出力します
+print(result) // 15 が出力されるはず

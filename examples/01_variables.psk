@@ -1,0 +1,11 @@
+// 変数と定数のサンプル
+
+// letは再代入可能な変数を宣言します
+let message = "Hello, Pisuke!"
+
+// constは変更不可能な定数を宣言します
+const GREETING = "Hello, World!"
+
+// `print`関数を使って変数の値を出力します
+print(message)
+print(GREETING)

@@ -1,0 +1,17 @@
+// データ構造（リストとマップ）のサンプル
+
+let myList = [1, "two", 3]
+
+let myMap = {
+  "name": "Pisuke",
+  "age": 25
+}
+
+print(myList)
+print(myMap)
+
+let first = myList[0]
+print(first)
+
+let name = myMap.name
+print(name)
