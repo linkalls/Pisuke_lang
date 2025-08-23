@@ -22,12 +22,15 @@ const (
 	MUL    = "*"
 
 	// Delimiters
-	LPAREN = "("
-	RPAREN = ")"
-	DOT    = "."
-	LBRACE = "{"
-	RBRACE = "}"
-	COMMA  = ","
+	LPAREN   = "("
+	RPAREN   = ")"
+	DOT      = "."
+	LBRACE   = "{"
+	RBRACE   = "}"
+	LBRACKET = "["
+	RBRACKET = "]"
+	COLON    = ":"
+	COMMA    = ","
 
 	// Keywords
 	LET    = "LET"

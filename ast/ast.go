@@ -231,6 +231,65 @@ type StringLiteral struct {
 func (sl *StringLiteral) expressionNode()      {}
 func (sl *StringLiteral) TokenLiteral() string { return sl.Token.Literal }
 func (sl *StringLiteral) String() string       { return sl.Token.Literal }
+
+// ListLiteral represents a list or array, e.g., `[1, 2, 3]`
+type ListLiteral struct {
+	Token    token.Token // the '[' token
+	Elements []Expression
+}
+
+func (ll *ListLiteral) expressionNode()      {}
+func (ll *ListLiteral) TokenLiteral() string { return ll.Token.Literal }
+func (ll *ListLiteral) String() string {
+	var out bytes.Buffer
+	elements := []string{}
+	for _, el := range ll.Elements {
+		elements = append(elements, el.String())
+	}
+	out.WriteString("[")
+	out.WriteString(strings.Join(elements, ", "))
+	out.WriteString("]")
+	return out.String()
+}
+
+// MapLiteral represents a map or hash, e.g., `{"key": "value"}`
+type MapLiteral struct {
+	Token token.Token // the '{' token
+	Pairs map[Expression]Expression
+}
+
+func (ml *MapLiteral) expressionNode()      {}
+func (ml *MapLiteral) TokenLiteral() string { return ml.Token.Literal }
+func (ml *MapLiteral) String() string {
+	var out bytes.Buffer
+	pairs := []string{}
+	for key, value := range ml.Pairs {
+		pairs = append(pairs, key.String()+":"+value.String())
+	}
+	out.WriteString("{")
+	out.WriteString(strings.Join(pairs, ", "))
+	out.WriteString("}")
+	return out.String()
+}
+
+// IndexExpression represents an index operation, e.g., `my_array[0]` or `my_map["key"]`
+type IndexExpression struct {
+	Token token.Token // The [ token
+	Left  Expression
+	Index Expression
+}
+
+func (ie *IndexExpression) expressionNode()      {}
+func (ie *IndexExpression) TokenLiteral() string { return ie.Token.Literal }
+func (ie *IndexExpression) String() string {
+	var out bytes.Buffer
+	out.WriteString("(")
+	out.WriteString(ie.Left.String())
+	out.WriteString("[")
+	out.WriteString(ie.Index.String())
+	out.WriteString("])")
+	return out.String()
+}
 func (ie *InfixExpression) String() string {
 	var out bytes.Buffer
 	out.WriteString("(")

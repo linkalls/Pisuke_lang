@@ -11,10 +11,9 @@ type Generator struct {
 	out         *bytes.Buffer
 	indentlevel int
 
-	requiresHttp     bool
-	requiresLog      bool
-	requiresFmt      bool
-	isInRouteHandler bool
+	requiresHttp bool
+	requiresLog  bool
+	requiresFmt  bool
 }
 
 func NewGenerator() *Generator {
@@ -99,6 +98,42 @@ func (g *Generator) genExpression(expr ast.Expression) {
 		g.write(fmt.Sprintf("\"%s\"", node.Value))
 	case *ast.Identifier:
 		g.write(node.Value)
+	case *ast.ListLiteral:
+		elements := []string{}
+		for _, el := range node.Elements {
+			// This is a bit tricky, need to capture expression output
+			var buf bytes.Buffer
+			originalOut := g.out
+			g.out = &buf
+			g.genExpression(el)
+			g.out = originalOut
+			elements = append(elements, buf.String())
+		}
+		g.write(fmt.Sprintf("[]interface{}{%s}", strings.Join(elements, ", ")))
+	case *ast.MapLiteral:
+		pairs := []string{}
+		for key, value := range node.Pairs {
+			var keyBuf, valBuf bytes.Buffer
+			originalOut := g.out
+
+			g.out = &keyBuf
+			g.genExpression(key)
+
+			g.out = &valBuf
+			g.genExpression(value)
+
+			g.out = originalOut
+			pairs = append(pairs, fmt.Sprintf("%s: %s", keyBuf.String(), valBuf.String()))
+		}
+		g.write(fmt.Sprintf("map[string]interface{}{%s}", strings.Join(pairs, ", ")))
+	case *ast.IndexExpression:
+		g.genExpression(node.Left)
+		g.write("[")
+		g.genExpression(node.Index)
+		g.write("]")
+	case *ast.MemberAccessExpression:
+		g.genExpression(node.Object)
+		g.write(fmt.Sprintf("[\"%s\"]", node.Property.Value))
 	case *ast.InfixExpression:
 		g.write("(")
 		g.genExpression(node.Left)
@@ -143,13 +178,48 @@ func (g *Generator) genExpression(expr ast.Expression) {
 					path := node.Arguments[0].(*ast.StringLiteral).Value
 					handler := node.Arguments[1].(*ast.FunctionLiteral)
 
-					g.write(fmt.Sprintf("http.HandleFunc(\"%s\", func(w http.ResponseWriter, r *http.Request) {\n", path))
+					g.write(fmt.Sprintf("http.HandleFunc(\"%s\", func(w http.ResponseWriter, r *http.Request) {", path))
 					g.indentlevel++
-					g.isInRouteHandler = true
-					for _, s := range handler.Body.Statements {
-						g.genStatement(s)
+
+					// Buffer for the handler's logic
+					var handlerLogicBuf bytes.Buffer
+					originalOut := g.out
+					g.out = &handlerLogicBuf
+
+					hasReqParam := len(handler.Parameters) > 0
+					if hasReqParam {
+						g.writeLine("query := make(map[string]interface{})")
+						g.writeLine("for k, v := range r.URL.Query() {")
+						g.indentlevel++
+					g.writeLine("if len(v) > 0 {")
+					g.indentlevel++
+					g.writeLine("query[k] = v[0]")
+					g.indentlevel--
+					g.writeLine("}")
+						g.indentlevel--
+						g.writeLine("}")
+						g.writeLine("req := make(map[string]interface{})")
+						g.writeLine("req[\"query\"] = query")
 					}
-					g.isInRouteHandler = false
+
+					// Transpile the body of the Pisuke handler
+					// The return value will be captured and printed later
+					for _, s := range handler.Body.Statements {
+						if rs, ok := s.(*ast.ReturnStatement); ok {
+							g.indent()
+							g.write("returnValue := ")
+							g.genExpression(rs.ReturnValue)
+							g.write("\n")
+						} else {
+							g.genStatement(s)
+						}
+					}
+
+					g.out = originalOut // Restore original buffer
+					g.write("\n")
+					g.out.Write(handlerLogicBuf.Bytes())
+					g.writeLine("fmt.Fprint(w, returnValue)")
+
 					g.indentlevel--
 					g.indent()
 					g.write("})")
@@ -190,13 +260,7 @@ func (g *Generator) genConstStatement(constStmt *ast.ConstStatement) {
 }
 
 func (g *Generator) genReturnStatement(returnStmt *ast.ReturnStatement) {
-	if g.isInRouteHandler {
-		g.write("fmt.Fprint(w, ")
-		g.genExpression(returnStmt.ReturnValue)
-		g.write(")\n")
-	} else {
-		g.write("return ")
-		g.genExpression(returnStmt.ReturnValue)
-		g.write("\n")
-	}
+	g.write("return ")
+	g.genExpression(returnStmt.ReturnValue)
+	g.write("\n")
 }

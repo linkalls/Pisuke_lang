@@ -18,13 +18,15 @@ const (
 	PRODUCT     // *
 	PREFIX      // -X or !X
 	CALL        // myFunction(X)
+	INDEX       // array[index]
 )
 
 var precedences = map[token.TokenType]int{
 	token.PLUS:   SUM,
-	token.MUL:    PRODUCT,
-	token.LPAREN: CALL,
-	token.DOT:    CALL,
+	token.MUL:      PRODUCT,
+	token.LPAREN:   CALL,
+	token.LBRACKET: INDEX,
+	token.DOT:      CALL,
 }
 
 type (
@@ -53,6 +55,8 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerPrefix(token.IDENT, p.parseIdentifier)
 	p.registerPrefix(token.INT, p.parseIntegerLiteral)
 	p.registerPrefix(token.STRING, p.parseStringLiteral)
+	p.registerPrefix(token.LBRACKET, p.parseListLiteral)
+	p.registerPrefix(token.LBRACE, p.parseMapLiteral)
 	p.registerPrefix(token.FN, p.parseFunctionLiteral)
 	p.registerPrefix(token.LPAREN, p.parseGroupedExpression)
 
@@ -60,6 +64,7 @@ func New(l *lexer.Lexer) *Parser {
 	p.registerInfix(token.PLUS, p.parseInfixExpression)
 	p.registerInfix(token.MUL, p.parseInfixExpression)
 	p.registerInfix(token.LPAREN, p.parseCallExpression)
+	p.registerInfix(token.LBRACKET, p.parseIndexExpression)
 	p.registerInfix(token.DOT, p.parseMemberAccessExpression)
 
 	p.nextToken()
@@ -226,6 +231,38 @@ func (p *Parser) parseStringLiteral() ast.Expression {
 	return &ast.StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
+func (p *Parser) parseListLiteral() ast.Expression {
+	list := &ast.ListLiteral{Token: p.curToken}
+	list.Elements = p.parseExpressionList(token.RBRACKET)
+	return list
+}
+
+func (p *Parser) parseMapLiteral() ast.Expression {
+	mapp := &ast.MapLiteral{Token: p.curToken}
+	mapp.Pairs = make(map[ast.Expression]ast.Expression)
+
+	for !p.peekTokenIs(token.RBRACE) {
+		p.nextToken()
+		key := p.parseExpression(LOWEST)
+
+		if !p.expectPeek(token.COLON) {
+			return nil
+		}
+		p.nextToken()
+		value := p.parseExpression(LOWEST)
+		mapp.Pairs[key] = value
+
+		if !p.peekTokenIs(token.RBRACE) && !p.expectPeek(token.COMMA) {
+			return nil
+		}
+	}
+
+	if !p.expectPeek(token.RBRACE) {
+		return nil
+	}
+	return mapp
+}
+
 func (p *Parser) parseIntegerLiteral() ast.Expression {
 	lit := &ast.IntegerLiteral{Token: p.curToken}
 	value, err := strconv.ParseInt(p.curToken.Literal, 0, 64)
@@ -310,6 +347,16 @@ func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 func (p *Parser) parseCallExpression(function ast.Expression) ast.Expression {
 	exp := &ast.CallExpression{Token: p.curToken, Function: function}
 	exp.Arguments = p.parseExpressionList(token.RPAREN)
+	return exp
+}
+
+func (p *Parser) parseIndexExpression(left ast.Expression) ast.Expression {
+	exp := &ast.IndexExpression{Token: p.curToken, Left: left}
+	p.nextToken()
+	exp.Index = p.parseExpression(LOWEST)
+	if !p.expectPeek(token.RBRACKET) {
+		return nil
+	}
 	return exp
 }
 
