@@ -4,7 +4,7 @@
 // (現在はまだ `import` 構文がないため、グローバルに利用可能です)
 
 // 静的ファイル（例: public/index.html）を配信するための設定
-// server.static("./public") // TODO: This requires a relative path fix
+// server.static("./public") // This will require a public directory
 
 // ルートパス "/" へのリクエストを処理するハンドラを登録
 server.route("/", fn(req) {

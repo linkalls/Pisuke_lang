@@ -7,10 +7,11 @@ let myMap = {
   "age": 25
 }
 
-// 現在、これらのデータ構造の要素にアクセスしたり、
-// それらを出力したりする標準的な方法がありません。
-//
-// let first = myList[0]
-// let name = myMap.name
-//
-// 上記のような構文は、今後のインデックス式の実装でサポートされます。
+print(myList)
+print(myMap)
+
+let first = myList[0]
+print(first)
+
+let name = myMap.name
+print(name)

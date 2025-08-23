@@ -123,13 +123,11 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		query := make(map[string]interface{})
 		for k, v := range r.URL.Query() {
-			if len(v) > 0 {
-				query[k] = v[0]
-			}
+			if len(v) > 0 { query[k] = v[0] }
 		}
 		req := make(map[string]interface{})
 		req["query"] = query
-		returnValue := ("Hello, " + req["query"]["name"])
+		returnValue := "Hello, " + req["query"]["name"].(string)
 		fmt.Fprint(w, returnValue)
 	})
 }
@@ -154,6 +152,37 @@ func TestGenerateConstStatement(t *testing.T) {
 
 func main() {
 	const MY_CONST = 123
+}
+`
+	generatedCode := Generate(program)
+	if generatedCode != expected {
+		t.Errorf("Generated code is not correct.\nExpected:\n%s\nGot:\n%s", expected, generatedCode)
+	}
+}
+
+func TestGeneratePrintStatement(t *testing.T) {
+	program := &ast.Program{
+		Statements: []ast.Statement{
+			&ast.ExpressionStatement{
+				Expression: &ast.CallExpression{
+					Function: &ast.Identifier{Value: "print"},
+					Arguments: []ast.Expression{
+						&ast.StringLiteral{Value: "hello"},
+						&ast.IntegerLiteral{Value: 5},
+					},
+				},
+			},
+		},
+	}
+
+	expected := `package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	fmt.Println("hello", 5)
 }
 `
 	generatedCode := Generate(program)

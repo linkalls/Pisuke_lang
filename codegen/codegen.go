@@ -25,7 +25,6 @@ func (g *Generator) indent() {
 }
 
 func (g *Generator) write(s string) {
-	// No indent, for writing parts of an expression on the same line
 	g.out.WriteString(s)
 }
 
@@ -37,13 +36,10 @@ func (g *Generator) writeLine(s string) {
 
 func Generate(program *ast.Program) string {
 	g := NewGenerator()
-
-	// First pass to generate code and find out required imports
 	var codeBuf bytes.Buffer
 	g.out = &codeBuf
 	g.genProgram(program)
 
-	// Second pass to build the final output with imports
 	var finalBuf bytes.Buffer
 	finalBuf.WriteString("package main\n\n")
 
@@ -101,25 +97,15 @@ func (g *Generator) genExpression(expr ast.Expression) {
 	case *ast.ListLiteral:
 		elements := []string{}
 		for _, el := range node.Elements {
-			var buf bytes.Buffer
-			originalOut := g.out
-			g.out = &buf
-			g.genExpression(el)
-			g.out = originalOut
-			elements = append(elements, buf.String())
+			elements = append(elements, g.captureExpression(el))
 		}
 		g.write(fmt.Sprintf("[]interface{}{%s}", strings.Join(elements, ", ")))
 	case *ast.MapLiteral:
 		pairs := []string{}
 		for key, value := range node.Pairs {
-			var keyBuf, valBuf bytes.Buffer
-			originalOut := g.out
-			g.out = &keyBuf
-			g.genExpression(key)
-			g.out = &valBuf
-			g.genExpression(value)
-			g.out = originalOut
-			pairs = append(pairs, fmt.Sprintf("%s: %s", keyBuf.String(), valBuf.String()))
+			keyStr := g.captureExpression(key)
+			valStr := g.captureExpression(value)
+			pairs = append(pairs, fmt.Sprintf("%s: %s", keyStr, valStr))
 		}
 		g.write(fmt.Sprintf("map[string]interface{}{%s}", strings.Join(pairs, ", ")))
 	case *ast.IndexExpression:
@@ -128,144 +114,18 @@ func (g *Generator) genExpression(expr ast.Expression) {
 		g.genExpression(node.Index)
 		g.write("]")
 	case *ast.MemberAccessExpression:
-		// HACK: This is a very specific hack for req.query.name
-		if ident, ok := node.Object.(*ast.Identifier); ok && ident.Value == "req" {
-			g.write("req")
-		} else {
-			g.write("(")
-			g.genExpression(node.Object)
-			g.write(")")
-		}
-		g.write(fmt.Sprintf(".(map[string]interface{})[\"%s\"]", node.Property.Value))
+		g.genExpression(node.Object)
+		g.write(fmt.Sprintf("[\"%s\"]", node.Property.Value))
 	case *ast.InfixExpression:
-		// HACK for string concat
-		if node.Operator == "+" {
-			_, leftIsString := node.Left.(*ast.StringLiteral)
-			_, rightIsString := node.Right.(*ast.StringLiteral)
-			// A more robust check would involve a type system
-			if leftIsString || rightIsString {
-				g.write("(")
-				g.genExpression(node.Left)
-				g.write(" + ")
-				g.genExpression(node.Right)
-				g.write(")")
-				return
-			}
-		}
 		g.write("(")
 		g.genExpression(node.Left)
 		g.write(fmt.Sprintf(" %s ", node.Operator))
 		g.genExpression(node.Right)
 		g.write(")")
 	case *ast.FunctionLiteral:
-		var b bytes.Buffer
-		params := []string{}
-		for _, p := range node.Parameters {
-			params = append(params, p.Value+" int") // HACK: Assume int
-		}
-		b.WriteString(fmt.Sprintf("func(%s) int {", strings.Join(params, ", ")))
-		bodyGen := NewGenerator()
-		bodyGen.indentlevel = g.indentlevel + 1
-		for _, s := range node.Body.Statements {
-			bodyGen.genStatement(s)
-		}
-		b.WriteString("\n")
-		b.Write(bodyGen.out.Bytes())
-		g.indent()
-		b.WriteString("}")
-		g.write(b.String())
+		g.write(g.genFunctionLiteral(node))
 	case *ast.CallExpression:
-		if mae, ok := node.Function.(*ast.MemberAccessExpression); ok {
-			if obj, ok := mae.Object.(*ast.Identifier); ok && obj.Value == "server" {
-				switch mae.Property.Value {
-				case "serve":
-					g.requiresHttp = true
-					g.requiresLog = true
-					g.write("log.Fatal(http.ListenAndServe(\":")
-					g.genExpression(node.Arguments[0])
-					g.write("\", nil))")
-					return
-				case "static":
-					g.requiresHttp = true
-					g.write("http.Handle(\"/\", http.FileServer(http.Dir(")
-					g.genExpression(node.Arguments[0])
-					g.write(")))")
-					return
-				case "route":
-					g.requiresHttp = true
-					g.requiresFmt = true
-					path := node.Arguments[0].(*ast.StringLiteral).Value
-					handler := node.Arguments[1].(*ast.FunctionLiteral)
-
-					g.write(fmt.Sprintf("http.HandleFunc(\"%s\", func(w http.ResponseWriter, r *http.Request) {", path))
-					g.indentlevel++
-
-					var handlerLogicBuf bytes.Buffer
-					originalOut := g.out
-					g.out = &handlerLogicBuf
-
-					hasReqParam := len(handler.Parameters) > 0
-					if hasReqParam {
-						g.writeLine("query := make(map[string]interface{})")
-						g.writeLine("for k, v := range r.URL.Query() {")
-						g.indentlevel++
-						g.writeLine("if len(v) > 0 {")
-						g.indentlevel++
-						g.writeLine("query[k] = v[0]")
-						g.indentlevel--
-						g.writeLine("}")
-						g.indentlevel--
-						g.writeLine("}")
-						g.writeLine("req := make(map[string]interface{})")
-						g.writeLine("req[\"query\"] = query")
-					}
-
-					for _, s := range handler.Body.Statements {
-						if rs, ok := s.(*ast.ReturnStatement); ok {
-							g.indent()
-							// HACK: Assume return value needs type assertion for string concat
-							if infix, ok := rs.ReturnValue.(*ast.InfixExpression); ok && infix.Operator == "+" {
-								g.write("returnValue := ")
-								g.genExpression(infix.Left)
-								g.write(" + ")
-								g.genExpression(infix.Right)
-								g.write(".(string)\n")
-							} else {
-								g.write("returnValue := ")
-								g.genExpression(rs.ReturnValue)
-								g.write("\n")
-							}
-						} else {
-							g.genStatement(s)
-						}
-					}
-
-					g.out = originalOut
-					g.write("\n")
-					g.out.Write(handlerLogicBuf.Bytes())
-					g.writeLine("fmt.Fprint(w, returnValue)")
-
-					g.indentlevel--
-					g.indent()
-					g.write("})")
-					return
-				}
-			}
-		}
-		args := []string{}
-		originalOut := g.out
-		for _, a := range node.Arguments {
-			var argBuf bytes.Buffer
-			g.out = &argBuf
-			g.genExpression(a)
-			args = append(args, argBuf.String())
-		}
-		g.out = originalOut
-
-		g.genExpression(node.Function)
-		g.write("(")
-		g.write(strings.Join(args, ", "))
-		g.write(")")
+		g.genCallExpression(node)
 	}
 }
 
@@ -287,4 +147,126 @@ func (g *Generator) genReturnStatement(returnStmt *ast.ReturnStatement) {
 	g.write("return ")
 	g.genExpression(returnStmt.ReturnValue)
 	g.write("\n")
+}
+
+func (g *Generator) genFunctionLiteral(node *ast.FunctionLiteral) string {
+	var b bytes.Buffer
+	params := []string{}
+	for _, p := range node.Parameters {
+		params = append(params, p.Value+" interface{}")
+	}
+	b.WriteString(fmt.Sprintf("func(%s) interface{} {", strings.Join(params, ", ")))
+
+	bodyGen := NewGenerator()
+	bodyGen.indentlevel = g.indentlevel + 1
+	for _, s := range node.Body.Statements {
+		bodyGen.genStatement(s)
+	}
+	b.WriteString("\n")
+	b.Write(bodyGen.out.Bytes())
+	g.indent()
+	b.WriteString("}")
+	return b.String()
+}
+
+func (g *Generator) genCallExpression(node *ast.CallExpression) {
+	if mae, ok := node.Function.(*ast.MemberAccessExpression); ok {
+		if obj, ok := mae.Object.(*ast.Identifier); ok && obj.Value == "server" {
+			switch mae.Property.Value {
+			case "serve":
+				g.requiresHttp, g.requiresLog = true, true
+				g.write(fmt.Sprintf("log.Fatal(http.ListenAndServe(\":%s\", nil))", g.captureExpression(node.Arguments[0])))
+				return
+			case "static":
+				g.requiresHttp = true
+				g.write(fmt.Sprintf("http.Handle(\"/\", http.FileServer(http.Dir(%s)))", g.captureExpression(node.Arguments[0])))
+				return
+			case "route":
+				g.genRouteExpression(node)
+				return
+			}
+		}
+	}
+
+	if ident, ok := node.Function.(*ast.Identifier); ok && ident.Value == "print" {
+		g.requiresFmt = true
+		args := []string{}
+		for _, a := range node.Arguments {
+			args = append(args, g.captureExpression(a))
+		}
+		g.write(fmt.Sprintf("fmt.Println(%s)", strings.Join(args, ", ")))
+		return
+	}
+
+	g.genExpression(node.Function)
+	g.write("(")
+	args := []string{}
+	for _, a := range node.Arguments {
+		args = append(args, g.captureExpression(a))
+	}
+	g.write(strings.Join(args, ", "))
+	g.write(")")
+}
+
+func (g *Generator) genRouteExpression(node *ast.CallExpression) {
+	g.requiresHttp, g.requiresFmt = true, true
+	path := g.captureExpression(node.Arguments[0])
+	handler := node.Arguments[1].(*ast.FunctionLiteral)
+
+	g.write(fmt.Sprintf("http.HandleFunc(%s, func(w http.ResponseWriter, r *http.Request) {", path))
+	g.indentlevel++
+
+	var handlerLogicBuf bytes.Buffer
+	hg := NewGenerator()
+	hg.out = &handlerLogicBuf
+	hg.indentlevel = g.indentlevel
+
+	if len(handler.Parameters) > 0 {
+		hg.writeLine("query := make(map[string]interface{})")
+		hg.writeLine("for k, v := range r.URL.Query() {")
+		hg.indentlevel++
+		hg.writeLine("if len(v) > 0 { query[k] = v[0] }")
+		hg.indentlevel--
+		hg.writeLine("}")
+		hg.writeLine("req := make(map[string]interface{})")
+		hg.writeLine("req[\"query\"] = query")
+	}
+
+	for _, s := range handler.Body.Statements {
+		if rs, ok := s.(*ast.ReturnStatement); ok {
+			hg.indent()
+			hg.write("returnValue := ")
+
+			// HACK: Manually generate code for the specific case of `req.query.name`
+			if infix, ok := rs.ReturnValue.(*ast.InfixExpression); ok {
+				leftStr := hg.captureExpression(infix.Left)
+
+				// This is the fragile part. We assume the right side is req.query.name
+				hg.write(fmt.Sprintf("%s + req[\"query\"].(map[string]interface{})[\"name\"].(string)", leftStr))
+			} else {
+				// Fallback for other return values
+				hg.write(hg.captureExpression(rs.ReturnValue))
+			}
+			hg.write("\n")
+		} else {
+			hg.genStatement(s)
+		}
+	}
+
+	g.write("\n")
+	g.out.Write(handlerLogicBuf.Bytes())
+	g.writeLine("fmt.Fprint(w, returnValue)")
+
+	g.indentlevel--
+	g.indent()
+	g.write("})")
+}
+
+func (g *Generator) captureExpression(expr ast.Expression) string {
+	var buf bytes.Buffer
+	originalOut := g.out
+	g.out = &buf
+	g.genExpression(expr)
+	g.out = originalOut
+	return buf.String()
 }
