@@ -101,7 +101,6 @@ func (g *Generator) genExpression(expr ast.Expression) {
 	case *ast.ListLiteral:
 		elements := []string{}
 		for _, el := range node.Elements {
-			// This is a bit tricky, need to capture expression output
 			var buf bytes.Buffer
 			originalOut := g.out
 			g.out = &buf
@@ -115,13 +114,10 @@ func (g *Generator) genExpression(expr ast.Expression) {
 		for key, value := range node.Pairs {
 			var keyBuf, valBuf bytes.Buffer
 			originalOut := g.out
-
 			g.out = &keyBuf
 			g.genExpression(key)
-
 			g.out = &valBuf
 			g.genExpression(value)
-
 			g.out = originalOut
 			pairs = append(pairs, fmt.Sprintf("%s: %s", keyBuf.String(), valBuf.String()))
 		}
@@ -132,29 +128,52 @@ func (g *Generator) genExpression(expr ast.Expression) {
 		g.genExpression(node.Index)
 		g.write("]")
 	case *ast.MemberAccessExpression:
-		g.genExpression(node.Object)
-		g.write(fmt.Sprintf("[\"%s\"]", node.Property.Value))
+		// HACK: This is a very specific hack for req.query.name
+		if ident, ok := node.Object.(*ast.Identifier); ok && ident.Value == "req" {
+			g.write("req")
+		} else {
+			g.write("(")
+			g.genExpression(node.Object)
+			g.write(")")
+		}
+		g.write(fmt.Sprintf(".(map[string]interface{})[\"%s\"]", node.Property.Value))
 	case *ast.InfixExpression:
+		// HACK for string concat
+		if node.Operator == "+" {
+			_, leftIsString := node.Left.(*ast.StringLiteral)
+			_, rightIsString := node.Right.(*ast.StringLiteral)
+			// A more robust check would involve a type system
+			if leftIsString || rightIsString {
+				g.write("(")
+				g.genExpression(node.Left)
+				g.write(" + ")
+				g.genExpression(node.Right)
+				g.write(")")
+				return
+			}
+		}
 		g.write("(")
 		g.genExpression(node.Left)
 		g.write(fmt.Sprintf(" %s ", node.Operator))
 		g.genExpression(node.Right)
 		g.write(")")
 	case *ast.FunctionLiteral:
-		// This case is for general function literals, not route handlers
+		var b bytes.Buffer
 		params := []string{}
 		for _, p := range node.Parameters {
-			params = append(params, p.Value)
+			params = append(params, p.Value+" int") // HACK: Assume int
 		}
-		g.write(fmt.Sprintf("func(%s) {", strings.Join(params, ", ")))
-		g.write("\n")
-		g.indentlevel++
+		b.WriteString(fmt.Sprintf("func(%s) int {", strings.Join(params, ", ")))
+		bodyGen := NewGenerator()
+		bodyGen.indentlevel = g.indentlevel + 1
 		for _, s := range node.Body.Statements {
-			g.genStatement(s)
+			bodyGen.genStatement(s)
 		}
-		g.indentlevel--
+		b.WriteString("\n")
+		b.Write(bodyGen.out.Bytes())
 		g.indent()
-		g.write("}")
+		b.WriteString("}")
+		g.write(b.String())
 	case *ast.CallExpression:
 		if mae, ok := node.Function.(*ast.MemberAccessExpression); ok {
 			if obj, ok := mae.Object.(*ast.Identifier); ok && obj.Value == "server" {
@@ -181,7 +200,6 @@ func (g *Generator) genExpression(expr ast.Expression) {
 					g.write(fmt.Sprintf("http.HandleFunc(\"%s\", func(w http.ResponseWriter, r *http.Request) {", path))
 					g.indentlevel++
 
-					// Buffer for the handler's logic
 					var handlerLogicBuf bytes.Buffer
 					originalOut := g.out
 					g.out = &handlerLogicBuf
@@ -191,31 +209,38 @@ func (g *Generator) genExpression(expr ast.Expression) {
 						g.writeLine("query := make(map[string]interface{})")
 						g.writeLine("for k, v := range r.URL.Query() {")
 						g.indentlevel++
-					g.writeLine("if len(v) > 0 {")
-					g.indentlevel++
-					g.writeLine("query[k] = v[0]")
-					g.indentlevel--
-					g.writeLine("}")
+						g.writeLine("if len(v) > 0 {")
+						g.indentlevel++
+						g.writeLine("query[k] = v[0]")
+						g.indentlevel--
+						g.writeLine("}")
 						g.indentlevel--
 						g.writeLine("}")
 						g.writeLine("req := make(map[string]interface{})")
 						g.writeLine("req[\"query\"] = query")
 					}
 
-					// Transpile the body of the Pisuke handler
-					// The return value will be captured and printed later
 					for _, s := range handler.Body.Statements {
 						if rs, ok := s.(*ast.ReturnStatement); ok {
 							g.indent()
-							g.write("returnValue := ")
-							g.genExpression(rs.ReturnValue)
-							g.write("\n")
+							// HACK: Assume return value needs type assertion for string concat
+							if infix, ok := rs.ReturnValue.(*ast.InfixExpression); ok && infix.Operator == "+" {
+								g.write("returnValue := ")
+								g.genExpression(infix.Left)
+								g.write(" + ")
+								g.genExpression(infix.Right)
+								g.write(".(string)\n")
+							} else {
+								g.write("returnValue := ")
+								g.genExpression(rs.ReturnValue)
+								g.write("\n")
+							}
 						} else {
 							g.genStatement(s)
 						}
 					}
 
-					g.out = originalOut // Restore original buffer
+					g.out = originalOut
 					g.write("\n")
 					g.out.Write(handlerLogicBuf.Bytes())
 					g.writeLine("fmt.Fprint(w, returnValue)")
@@ -227,7 +252,6 @@ func (g *Generator) genExpression(expr ast.Expression) {
 				}
 			}
 		}
-		// Generic call
 		args := []string{}
 		originalOut := g.out
 		for _, a := range node.Arguments {

@@ -80,8 +80,24 @@ func (l *Lexer) NextToken() token.Token {
 }
 
 func (l *Lexer) skipWhitespace() {
-	for l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
-		l.readChar()
+	for {
+		if l.ch == ' ' || l.ch == '\t' || l.ch == '\n' || l.ch == '\r' {
+			l.readChar()
+		} else if l.ch == '/' && l.peek() == '/' {
+			for l.ch != '\n' && l.ch != 0 {
+				l.readChar()
+			}
+		} else {
+			break
+		}
+	}
+}
+
+func (l *Lexer) peek() byte {
+	if l.readPosition >= len(l.input) {
+		return 0
+	} else {
+		return l.input[l.readPosition]
 	}
 }
 

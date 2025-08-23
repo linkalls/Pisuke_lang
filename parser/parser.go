@@ -22,7 +22,7 @@ const (
 )
 
 var precedences = map[token.TokenType]int{
-	token.PLUS:   SUM,
+	token.PLUS:     SUM,
 	token.MUL:      PRODUCT,
 	token.LPAREN:   CALL,
 	token.LBRACKET: INDEX,
@@ -91,13 +91,6 @@ func (p *Parser) ParseProgram() *ast.Program {
 	program.Statements = []ast.Statement{}
 
 	for p.curToken.Type != token.EOF {
-		if p.curToken.Type == token.ILLEGAL {
-			msg := fmt.Sprintf("illegal token: %q", p.curToken.Literal)
-			p.Errors = append(p.Errors, msg)
-			p.nextToken()
-			continue
-		}
-
 		stmt := p.parseStatement()
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
@@ -123,69 +116,42 @@ func (p *Parser) parseStatement() ast.Statement {
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
 	stmt := &ast.LetStatement{Token: p.curToken}
-
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
 	p.nextToken()
-
 	stmt.Value = p.parseExpression(LOWEST)
+	return stmt
+}
 
-	if p.peekTokenIs(token.RBRACE) {
-		p.nextToken()
+func (p *Parser) parseConstStatement() *ast.ConstStatement {
+	stmt := &ast.ConstStatement{Token: p.curToken}
+	if !p.expectPeek(token.IDENT) {
+		return nil
 	}
-
+	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	if !p.expectPeek(token.ASSIGN) {
+		return nil
+	}
+	p.nextToken()
+	stmt.Value = p.parseExpression(LOWEST)
 	return stmt
 }
 
 func (p *Parser) parseReturnStatement() *ast.ReturnStatement {
 	stmt := &ast.ReturnStatement{Token: p.curToken}
 	p.nextToken()
-
 	stmt.ReturnValue = p.parseExpression(LOWEST)
-
-	if p.peekTokenIs(token.RBRACE) {
-		p.nextToken()
-	}
-
-	return stmt
-}
-
-func (p *Parser) parseConstStatement() *ast.ConstStatement {
-	stmt := &ast.ConstStatement{Token: p.curToken}
-
-	if !p.expectPeek(token.IDENT) {
-		return nil
-	}
-	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
-
-	if !p.expectPeek(token.ASSIGN) {
-		return nil
-	}
-	p.nextToken()
-
-	stmt.Value = p.parseExpression(LOWEST)
-
-	if p.peekTokenIs(token.RBRACE) {
-		p.nextToken()
-	}
-
 	return stmt
 }
 
 func (p *Parser) parseExpressionStatement() *ast.ExpressionStatement {
 	stmt := &ast.ExpressionStatement{Token: p.curToken}
 	stmt.Expression = p.parseExpression(LOWEST)
-
-	if p.peekTokenIs(token.RBRACE) {
-		p.nextToken()
-	}
-
 	return stmt
 }
 
@@ -333,7 +299,7 @@ func (p *Parser) parseFunctionParameters() []*ast.Identifier {
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
 	block := &ast.BlockStatement{Token: p.curToken}
 	block.Statements = []ast.Statement{}
-	p.nextToken()
+	p.nextToken() // consume {
 	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
 		stmt := p.parseStatement()
 		if stmt != nil {
