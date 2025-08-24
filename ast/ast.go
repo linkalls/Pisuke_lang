@@ -47,9 +47,10 @@ func (p *Program) String() string {
 
 // LetStatement represents a 'let' statement, e.g., `let x = 5;`
 type LetStatement struct {
-	Token token.Token // the token.LET token
-	Name  *Identifier
-	Value Expression
+	Token     token.Token // the token.LET token
+	Name      *Identifier
+	ValueType *Identifier
+	Value     Expression
 }
 
 func (ls *LetStatement) statementNode()       {}
@@ -58,6 +59,9 @@ func (ls *LetStatement) String() string {
 	var out bytes.Buffer
 	out.WriteString(ls.TokenLiteral() + " ")
 	out.WriteString(ls.Name.String())
+	if ls.ValueType != nil {
+		out.WriteString(": " + ls.ValueType.String())
+	}
 	out.WriteString(" = ")
 	if ls.Value != nil {
 		out.WriteString(ls.Value.String())

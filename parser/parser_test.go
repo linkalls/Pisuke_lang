@@ -39,6 +39,46 @@ let foobar = 838383
 	}
 }
 
+func TestTypedLetStatement(t *testing.T) {
+	input := `let x: int = 10`
+
+	l := lexer.New(input)
+	p := New(l)
+	program := p.ParseProgram()
+	checkParserErrors(t, p)
+
+	if len(program.Statements) != 1 {
+		t.Fatalf("program.Statements does not contain 1 statement. got=%d",
+			len(program.Statements))
+	}
+
+	stmt, ok := program.Statements[0].(*ast.LetStatement)
+	if !ok {
+		t.Fatalf("program.Statements[0] is not ast.LetStatement. got=%T", program.Statements[0])
+	}
+
+	if stmt.Name.Value != "x" {
+		t.Errorf("stmt.Name.Value not 'x'. got=%s", stmt.Name.Value)
+	}
+
+	if stmt.ValueType == nil {
+		t.Fatalf("stmt.ValueType is nil")
+	}
+
+	if stmt.ValueType.Value != "int" {
+		t.Errorf("stmt.ValueType.Value not 'int'. got=%s", stmt.ValueType.Value)
+	}
+
+	val, ok := stmt.Value.(*ast.IntegerLiteral)
+	if !ok {
+		t.Fatalf("stmt.Value not *ast.IntegerLiteral. got=%T", stmt.Value)
+	}
+
+	if val.Value != 10 {
+		t.Errorf("val.Value not %d. got=%d", 10, val.Value)
+	}
+}
+
 func TestIdentifierExpression(t *testing.T) {
 	input := "foobar"
 	l := lexer.New(input)

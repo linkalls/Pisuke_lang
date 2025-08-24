@@ -109,6 +109,10 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseConstStatement()
 	case token.RETURN:
 		return p.parseReturnStatement()
+	case token.ILLEGAL:
+		msg := fmt.Sprintf("illegal token: %q", p.curToken.Literal)
+		p.Errors = append(p.Errors, msg)
+		return nil
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -116,15 +120,27 @@ func (p *Parser) parseStatement() ast.Statement {
 
 func (p *Parser) parseLetStatement() *ast.LetStatement {
 	stmt := &ast.LetStatement{Token: p.curToken}
+
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
+
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+
+	// Check for optional type annotation `let name: type = value`
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // Advance to the COLON
+		p.nextToken() // Advance to the TYPE
+		stmt.ValueType = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	}
+
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
+
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
+
 	return stmt
 }
 
