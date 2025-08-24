@@ -109,6 +109,8 @@ func (p *Parser) parseStatement() ast.Statement {
 		return p.parseConstStatement()
 	case token.RETURN:
 		return p.parseReturnStatement()
+	case token.TYPE:
+		return p.parseTypeDefinition()
 	default:
 		return p.parseExpressionStatement()
 	}
@@ -120,6 +122,14 @@ func (p *Parser) parseLetStatement() *ast.LetStatement {
 		return nil
 	}
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	// optional type annotation: : Type
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken()
+		p.nextToken()
+		if p.curToken.Type == token.IDENT {
+			stmt.TypeName = p.curToken.Literal
+		}
+	}
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
@@ -134,6 +144,14 @@ func (p *Parser) parseConstStatement() *ast.ConstStatement {
 		return nil
 	}
 	stmt.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	// optional type annotation
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken()
+		p.nextToken()
+		if p.curToken.Type == token.IDENT {
+			stmt.TypeName = p.curToken.Literal
+		}
+	}
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
@@ -264,36 +282,144 @@ func (p *Parser) parseInfixExpression(left ast.Expression) ast.Expression {
 
 func (p *Parser) parseFunctionLiteral() ast.Expression {
 	lit := &ast.FunctionLiteral{Token: p.curToken}
+	// optional function name
+	if p.peekTokenIs(token.IDENT) {
+		p.nextToken()
+		lit.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	}
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
-	lit.Parameters = p.parseFunctionParameters()
+	params, paramTypes := p.parseFunctionParameters()
+	lit.Parameters = params
+	lit.ParamTypes = paramTypes
+	// optional return type
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // consume ':'
+		p.nextToken() // move to type identifier
+		if p.curToken.Type == token.IDENT {
+			lit.ReturnType = p.curToken.Literal
+		}
+	}
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
 	lit.Body = p.parseBlockStatement()
 	return lit
 }
-
-func (p *Parser) parseFunctionParameters() []*ast.Identifier {
+func (p *Parser) parseFunctionParameters() ([]*ast.Identifier, map[string]string) {
 	identifiers := []*ast.Identifier{}
+	types := make(map[string]string)
 	if p.peekTokenIs(token.RPAREN) {
 		p.nextToken()
-		return identifiers
+		return identifiers, types
 	}
 	p.nextToken()
 	ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	// if next token is ':' then parse type
+	if p.peekTokenIs(token.COLON) {
+		p.nextToken() // consume ':'
+		p.nextToken() // move to type identifier
+		if p.curToken.Type == token.IDENT {
+			types[ident.Value] = p.curToken.Literal
+		}
+	}
 	identifiers = append(identifiers, ident)
 	for p.peekTokenIs(token.COMMA) {
 		p.nextToken()
 		p.nextToken()
 		ident := &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+		if p.peekTokenIs(token.COLON) {
+			p.nextToken()
+			p.nextToken()
+			if p.curToken.Type == token.IDENT {
+				types[ident.Value] = p.curToken.Literal
+			}
+		}
 		identifiers = append(identifiers, ident)
 	}
 	if !p.expectPeek(token.RPAREN) {
+		return nil, nil
+	}
+	return identifiers, types
+}
+
+func (p *Parser) parseTypeDefinition() *ast.TypeDefinition {
+	td := &ast.TypeDefinition{Token: p.curToken}
+	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
-	return identifiers
+	td.Name = &ast.Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	if !p.expectPeek(token.ASSIGN) {
+		return nil
+	}
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	fields := []*ast.Field{}
+	// parse fields until RBRACE
+	for !p.peekTokenIs(token.RBRACE) {
+		p.nextToken()
+		// expect IDENT
+		if p.curToken.Type != token.IDENT {
+			p.peekError(token.IDENT)
+			return nil
+		}
+		fieldName := p.curToken.Literal
+		if !p.expectPeek(token.COLON) {
+			return nil
+		}
+		p.nextToken()
+		// field type can be an identifier or an inline nested object type
+		if p.curToken.Type == token.IDENT {
+			fieldType := p.curToken.Literal
+			fields = append(fields, &ast.Field{Name: fieldName, Type: fieldType})
+		} else if p.curToken.Type == token.LBRACE {
+			// parse inline nested type
+			nestedFields := []*ast.Field{}
+			// consume inner fields
+			for !p.peekTokenIs(token.RBRACE) {
+				p.nextToken()
+				if p.curToken.Type != token.IDENT {
+					p.peekError(token.IDENT)
+					return nil
+				}
+				nfName := p.curToken.Literal
+				if !p.expectPeek(token.COLON) {
+					return nil
+				}
+				p.nextToken()
+				if p.curToken.Type != token.IDENT {
+					p.peekError(token.IDENT)
+					return nil
+				}
+				nfType := p.curToken.Literal
+				nestedFields = append(nestedFields, &ast.Field{Name: nfName, Type: nfType})
+				if p.peekTokenIs(token.COMMA) {
+					p.nextToken()
+				}
+			}
+			if !p.expectPeek(token.RBRACE) {
+				return nil
+			}
+			nestedTd := &ast.TypeDefinition{Fields: nestedFields}
+			fields = append(fields, &ast.Field{Name: fieldName, Nested: nestedTd})
+		} else {
+			p.peekError(token.IDENT)
+			return nil
+		}
+		// optional comma
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+		}
+	}
+
+	if !p.expectPeek(token.RBRACE) {
+		return nil
+	}
+	td.Fields = fields
+	return td
 }
 
 func (p *Parser) parseBlockStatement() *ast.BlockStatement {
@@ -382,6 +508,13 @@ func (p *Parser) peekError(t token.TokenType) {
 }
 
 func (p *Parser) noPrefixParseFnError(t token.TokenType) {
+	if t == token.ILLEGAL || t == token.SEMICOLON {
+		// Use the literal to show the illegal character
+		lit := p.curToken.Literal
+		msg := fmt.Sprintf("illegal token: %q", lit)
+		p.Errors = append(p.Errors, msg)
+		return
+	}
 	msg := fmt.Sprintf("no prefix parse function for %s found", t)
 	p.Errors = append(p.Errors, msg)
 }

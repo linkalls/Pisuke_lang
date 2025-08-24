@@ -34,10 +34,10 @@ server.route("/users/:id", fn(req) {
 })
 
 // サーバーをポート8080で起動
-server.serve(port: 8080)
+server.serve(8080)
 ```
 
-- **`server.serve(port: int)`**: 指定されたポートでHTTPサーバーを起動します。
+- **`server.serve(int)`**: 指定されたポートでHTTPサーバーを起動します。
 - **`server.route(path: string, handler: fn)`**: 特定のパスとHTTPメソッド（将来的にサポート）に対応するハンドラ関数を登録します。
   - パスパラメータ（例: `:id`）をサポートし、`req.params`からアクセス可能にします。
 

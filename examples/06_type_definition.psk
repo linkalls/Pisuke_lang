@@ -1,0 +1,10 @@
+// 06_type_definition.psk
+// カスタム型定義の例
+
+type User = {
+    id: int,
+    name: {n:string},
+}
+
+let u:User = { "id": 1, "name": {n: "Alice"} }
+print(u.name)

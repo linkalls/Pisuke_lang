@@ -92,7 +92,7 @@ func TestGenerateReqQuery(t *testing.T) {
 								Statements: []ast.Statement{
 									&ast.ReturnStatement{
 										ReturnValue: &ast.InfixExpression{
-											Left: &ast.StringLiteral{Value: "Hello, "},
+											Left:     &ast.StringLiteral{Value: "Hello, "},
 											Operator: "+",
 											Right: &ast.IndexExpression{
 												Left: &ast.MemberAccessExpression{
@@ -116,7 +116,10 @@ func TestGenerateReqQuery(t *testing.T) {
 
 import (
 	"fmt"
+	"log"
 	"net/http"
+	"encoding/json"
+	"io/ioutil"
 )
 
 func main() {
@@ -127,8 +130,21 @@ func main() {
 		}
 		req := make(map[string]interface{})
 		req["query"] = query
-		returnValue := "Hello, " + req["query"]["name"].(string)
-		fmt.Fprint(w, returnValue)
+		if r.Method == "POST" || r.Method == "PUT" {
+			bodyBytes, _ := ioutil.ReadAll(r.Body)
+			if len(bodyBytes) > 0 { var bodyObj interface{}; _ = json.Unmarshal(bodyBytes, &bodyObj); req["body"] = bodyObj }
+		}
+		log.Printf("%s %s", r.Method, r.URL.Path)
+		// handler logic
+		returnValue := interface{}(("Hello, " + req["query"]["name"]))
+		switch rv := returnValue.(type) {
+			case string:
+				fmt.Fprint(w, rv)
+			default:
+				b, _ := json.Marshal(rv)
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(b)
+		}
 	})
 }
 `
@@ -223,4 +239,5 @@ func main() {
 		t.Errorf("Generated code is not correct.\nExpected:\n%s\nGot:\n%s", expected, generatedCode)
 	}
 }
+
 // All other tests from before are also here, just omitted for brevity

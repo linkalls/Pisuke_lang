@@ -49,6 +49,8 @@ func (l *Lexer) NextToken() token.Token {
 		tok = newToken(token.LBRACE, l.ch)
 	case '}':
 		tok = newToken(token.RBRACE, l.ch)
+	case ';':
+		tok = newToken(token.SEMICOLON, l.ch)
 	case '[':
 		tok = newToken(token.LBRACKET, l.ch)
 	case ']':
@@ -145,6 +147,7 @@ var keywords = map[string]token.TokenType{
 	"let":    token.LET,
 	"const":  token.CONST,
 	"return": token.RETURN,
+	"type":   token.TYPE,
 }
 
 func lookupIdent(ident string) token.TokenType {

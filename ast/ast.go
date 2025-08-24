@@ -47,9 +47,10 @@ func (p *Program) String() string {
 
 // LetStatement represents a 'let' statement, e.g., `let x = 5;`
 type LetStatement struct {
-	Token token.Token // the token.LET token
-	Name  *Identifier
-	Value Expression
+	Token    token.Token // the token.LET token
+	Name     *Identifier
+	Value    Expression
+	TypeName string
 }
 
 func (ls *LetStatement) statementNode()       {}
@@ -67,9 +68,10 @@ func (ls *LetStatement) String() string {
 
 // ConstStatement represents a 'const' statement, e.g., `const MY_CONST = 10;`
 type ConstStatement struct {
-	Token token.Token // the token.CONST token
-	Name  *Identifier
-	Value Expression
+	Token    token.Token // the token.CONST token
+	Name     *Identifier
+	Value    Expression
+	TypeName string
 }
 
 func (cs *ConstStatement) statementNode()       {}
@@ -143,7 +145,10 @@ func (bs *BlockStatement) String() string {
 // FunctionLiteral represents a function definition, e.g., `fn(x, y) { ... }`
 type FunctionLiteral struct {
 	Token      token.Token // The 'fn' token
+	Name       *Identifier
 	Parameters []*Identifier
+	ParamTypes map[string]string // param name -> type (optional)
+	ReturnType string
 	Body       *BlockStatement
 }
 
@@ -153,20 +158,72 @@ func (fl *FunctionLiteral) String() string {
 	var out bytes.Buffer
 	params := []string{}
 	for _, p := range fl.Parameters {
+		if fl.ParamTypes != nil {
+			if t, ok := fl.ParamTypes[p.Value]; ok {
+				params = append(params, p.String()+": "+t)
+				continue
+			}
+		}
 		params = append(params, p.String())
 	}
 	out.WriteString(fl.TokenLiteral())
+	if fl.Name != nil {
+		out.WriteString(" ")
+		out.WriteString(fl.Name.String())
+	}
 	out.WriteString("(")
 	out.WriteString(strings.Join(params, ", "))
 	out.WriteString(") ")
+	if fl.ReturnType != "" {
+		out.WriteString(":" + fl.ReturnType + " ")
+	}
 	out.WriteString(fl.Body.String())
 	return out.String()
 }
 
+// TypeDefinition represents `type Name = { ... }` style declarations
+type TypeDefinition struct {
+	Token token.Token // the 'type' token
+	Name  *Identifier
+	// Fields represent struct-like members: name and type
+	Fields []*Field
+}
+
+func (td *TypeDefinition) statementNode()       {}
+func (td *TypeDefinition) TokenLiteral() string { return td.Token.Literal }
+func (td *TypeDefinition) String() string {
+	var out bytes.Buffer
+	out.WriteString(td.TokenLiteral() + " " + td.Name.String() + " = ")
+	if td.Fields != nil {
+		fields := []string{}
+		for _, f := range td.Fields {
+			if f.Nested != nil {
+				// represent nested inline type
+				nested := []string{}
+				for _, nf := range f.Nested.Fields {
+					nested = append(nested, nf.Name+": "+nf.Type)
+				}
+				fields = append(fields, f.Name+": {"+strings.Join(nested, ", ")+"}")
+			} else {
+				fields = append(fields, f.Name+": "+f.Type)
+			}
+		}
+		out.WriteString("{ " + strings.Join(fields, ", ") + " }")
+	}
+	return out.String()
+}
+
+// Field represents a field inside a type definition: name and type
+type Field struct {
+	Name   string
+	Type   string
+	Nested *TypeDefinition
+}
+
 // CallExpression represents a function call, e.g., `myFunction(arg1, arg2)`
 type CallExpression struct {
-	Token     token.Token  // The '(' token
-	Function  Expression   // Identifier or FunctionLiteral
+	Token     token.Token // The '(' token
+	Function  Expression  // Identifier or FunctionLiteral
 	Arguments []Expression
 }
 

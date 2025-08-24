@@ -22,19 +22,21 @@ const (
 	MUL    = "*"
 
 	// Delimiters
-	LPAREN   = "("
-	RPAREN   = ")"
-	DOT      = "."
-	LBRACE   = "{"
-	RBRACE   = "}"
-	LBRACKET = "["
-	RBRACKET = "]"
-	COLON    = ":"
-	COMMA    = ","
+	LPAREN    = "("
+	RPAREN    = ")"
+	DOT       = "."
+	LBRACE    = "{"
+	RBRACE    = "}"
+	LBRACKET  = "["
+	RBRACKET  = "]"
+	COLON     = ":"
+	COMMA     = ","
+	SEMICOLON = ";"
 
 	// Keywords
 	LET    = "LET"
 	CONST  = "CONST"
 	FN     = "FN"
 	RETURN = "RETURN"
+	TYPE   = "TYPE"
 )
